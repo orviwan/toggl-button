@@ -21,7 +21,8 @@ var TogglButton = {
     'pivotaltracker\\.com',
     'producteev\\.com'].join('|')),
   $curEntryId: null,
-
+  $clientProjectMap: {},
+  
   checkUrl: function (tabId, changeInfo, tab) {
     if (changeInfo.status === 'complete') {
       if (TogglButton.$sites.test(tab.url)) {
@@ -54,7 +55,71 @@ var TogglButton = {
     xhr.send();
   },
 
+  fetchClients: function (apiUrl) {
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", apiUrl + "/clients", true);
+    xhr.onload = function () {
+      if (xhr.status === 200) {
+        var clientMap = {}, resp = JSON.parse(xhr.responseText);
+        if (resp) {
+          if(resp.data) {
+            resp = resp.data;
+          }
+          resp.forEach(function (client) {
+            clientMap[client.name] = client.id;
+            TogglButton.fetchClientProjects(apiUrl, client.id, client.name);
+          });
+        }
+      } else if (apiUrl === TogglButton.$apiUrl) {
+        TogglButton.fetchClients(TogglButton.$newApiUrl);
+      }
+    };
+    xhr.send();
+  },  
+  
+  fetchClientProjects: function (apiUrl, clientID, clientName) {
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", apiUrl + "/clients/" + clientID + "/projects", true);
+    //alert('fetch: ' + clientID);
+    xhr.onload = function () {
+      if (xhr.status === 200) {
+        var clientProjectMap = {}, resp = JSON.parse(xhr.responseText);
+        if (resp) {
+          if(resp.data) {
+            resp = resp.data;
+          }
+          resp.forEach(function (clientProject) {
+            //clientProjectMap[clientName + ' > ' + clientProject.name] = clientProject.id;
+            TogglButton.$clientProjectMap[clientName + ' > ' + clientProject.name] = clientProject.id;
+            //alert('Found: ' + clientName + ' > ' + clientProject.name);
+
+          });
+        }
+        //TogglButton.$clientProjectMap = clientProjectMap;
+      } else if (apiUrl === TogglButton.$apiUrl) {
+        TogglButton.fetchClientProjects(TogglButton.$newApiUrl, clientID, clientName);
+      }
+    };
+    xhr.send();
+  },  
+  
   createTimeEntry: function (timeEntry) {
+    var clientProjectId = 0;
+    
+    clientProjectId = TogglButton.$clientProjectMap[timeEntry.clientName + ' > ' + timeEntry.projectName];
+    
+    if(isNaN(clientProjectId)) {
+        alert('Could not find project in Toggl (' + clientProjectId + '): ' + timeEntry.clientName + ' > ' + timeEntry.projectName);
+        
+
+        /* document.querySelector('.toggl-button').style.color = '';
+        document.querySelector('.toggl-button').classList.remove('active');
+        document.querySelector('.toggl-button').innerHTML  = 'Start timer';*/
+        return;
+    }
+    
+    //alert('new project ID: ' + clientProjectId);
+    
     var start = new Date(),
       xhr = new XMLHttpRequest(),
       entry = {
@@ -128,5 +193,6 @@ chrome.pageAction.onClicked.addListener(function (tab) {
 });
 
 TogglButton.fetchUser(TogglButton.$apiUrl);
+TogglButton.fetchClients(TogglButton.$apiUrl);
 chrome.tabs.onUpdated.addListener(TogglButton.checkUrl);
 chrome.extension.onMessage.addListener(TogglButton.newMessage);
