@@ -95,6 +95,7 @@ var togglbutton = {
           projectId: invokeIfFunction(params.projectId),
           description: invokeIfFunction(params.description),
           projectName: invokeIfFunction(params.projectName),
+          clientName: invokeIfFunction(params.clientName),
           createdWith: 'TogglButton - ' + params.className
         };
       }
