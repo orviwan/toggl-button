@@ -22,6 +22,7 @@ var TogglButton = {
     'producteev\\.com'].join('|')),
   $curEntryId: null,
   $clientProjectMap: {},
+  $dataRefresh: false,
   
   checkUrl: function (tabId, changeInfo, tab) {
     if (changeInfo.status === 'complete') {
@@ -37,7 +38,8 @@ var TogglButton = {
 
   fetchUser: function (apiUrl) {
     var xhr = new XMLHttpRequest();
-    xhr.open("GET", apiUrl + "/me?with_related_data=true", true);
+    var milliseconds = new Date().getTime();
+    xhr.open("GET", apiUrl + "/me?with_related_data=true&uts=" + milliseconds, true);
     xhr.onload = function () {
       if (xhr.status === 200) {
         var projectMap = {}, resp = JSON.parse(xhr.responseText);
@@ -57,7 +59,8 @@ var TogglButton = {
 
   fetchClients: function (apiUrl) {
     var xhr = new XMLHttpRequest();
-    xhr.open("GET", apiUrl + "/clients", true);
+    var milliseconds = new Date().getTime();
+    xhr.open("GET", apiUrl + "/clients?uts=" + milliseconds, true);
     xhr.onload = function () {
       if (xhr.status === 200) {
         var clientMap = {}, resp = JSON.parse(xhr.responseText);
@@ -79,7 +82,8 @@ var TogglButton = {
   
   fetchClientProjects: function (apiUrl, clientID, clientName) {
     var xhr = new XMLHttpRequest();
-    xhr.open("GET", apiUrl + "/clients/" + clientID + "/projects", true);
+    var milliseconds = new Date().getTime();
+    xhr.open("GET", apiUrl + "/clients/" + clientID + "/projects?uts=" + milliseconds, true);
     //alert('fetch: ' + clientID);
     xhr.onload = function () {
       if (xhr.status === 200) {
@@ -109,6 +113,15 @@ var TogglButton = {
     clientProjectId = TogglButton.$clientProjectMap[timeEntry.clientName + ' > ' + timeEntry.projectName];
     
     if(isNaN(clientProjectId)) {
+    
+        if(!TogglButton.$dataRefresh) {
+            TogglButton.$dataRefresh = true;
+            TogglButton.fetchClients(TogglButton.$apiUrl);
+            alert('I refreshed the data, can you try again?');
+            return;
+        }
+        TogglButton.$dataRefresh = false;
+    
         alert('Could not find project in Toggl (' + clientProjectId + '): ' + timeEntry.clientName + ' > ' + timeEntry.projectName);
         
 
