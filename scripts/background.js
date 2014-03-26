@@ -22,6 +22,7 @@ var TogglButton = {
     'producteev\\.com'].join('|')),
   $curEntryId: null,
   $clientProjectMap: {},
+  $clientMap: {},
   $dataRefresh: false,
   
   checkUrl: function (tabId, changeInfo, tab) {
@@ -63,14 +64,25 @@ var TogglButton = {
     xhr.open("GET", apiUrl + "/clients?uts=" + milliseconds, true);
     xhr.onload = function () {
       if (xhr.status === 200) {
-        var clientMap = {}, resp = JSON.parse(xhr.responseText);
+        
+        var resp = JSON.parse(xhr.responseText);
         if (resp) {
+          
           if(resp.data) {
             resp = resp.data;
           }
+          
+          if(TogglButton.$dataRefresh) {
+            TogglButton.$clientProjectMap = {};
+          }
+          
+          TogglButton.$clientMap = {};
+          
           resp.forEach(function (client) {
-            clientMap[client.name] = client.id;
-            TogglButton.fetchClientProjects(apiUrl, client.id, client.name);
+            if(!client.server_deleted_at) {
+                TogglButton.$clientMap[client.name] = client.id;
+                TogglButton.fetchClientProjects(apiUrl, client.id, client.name);
+            }
           });
         }
       } else if (apiUrl === TogglButton.$apiUrl) {
@@ -84,22 +96,21 @@ var TogglButton = {
     var xhr = new XMLHttpRequest();
     var milliseconds = new Date().getTime();
     xhr.open("GET", apiUrl + "/clients/" + clientID + "/projects?uts=" + milliseconds, true);
-    //alert('fetch: ' + clientID);
     xhr.onload = function () {
       if (xhr.status === 200) {
-        var clientProjectMap = {}, resp = JSON.parse(xhr.responseText);
+        
+        var resp = JSON.parse(xhr.responseText);
         if (resp) {
           if(resp.data) {
             resp = resp.data;
           }
           resp.forEach(function (clientProject) {
-            //clientProjectMap[clientName + ' > ' + clientProject.name] = clientProject.id;
-            TogglButton.$clientProjectMap[clientName + ' > ' + clientProject.name] = clientProject.id;
-            //alert('Found: ' + clientName + ' > ' + clientProject.name);
+            if(clientProject.active) {
+                TogglButton.$clientProjectMap[clientName + ' > ' + clientProject.name] = clientProject.id;
+            }
 
           });
         }
-        //TogglButton.$clientProjectMap = clientProjectMap;
       } else if (apiUrl === TogglButton.$apiUrl) {
         TogglButton.fetchClientProjects(TogglButton.$newApiUrl, clientID, clientName);
       }
@@ -108,7 +119,12 @@ var TogglButton = {
   },  
   
   createTimeEntry: function (timeEntry) {
-    var clientProjectId = 0;
+    var clientProjectId;
+    
+    if(!timeEntry.projectName) {
+        alert('Error: Tasks must be within Sections in Asana');
+        return false;
+    }
     
     clientProjectId = TogglButton.$clientProjectMap[timeEntry.clientName + ' > ' + timeEntry.projectName];
     
@@ -117,22 +133,21 @@ var TogglButton = {
         if(!TogglButton.$dataRefresh) {
             TogglButton.$dataRefresh = true;
             TogglButton.fetchClients(TogglButton.$apiUrl);
-            alert('I refreshed the data, can you try again?');
+            alert('Sorry, not found! I have refreshed the data, please try again');
             return;
         }
         TogglButton.$dataRefresh = false;
-    
-        alert('Could not find project in Toggl (' + clientProjectId + '): ' + timeEntry.clientName + ' > ' + timeEntry.projectName);
         
-
-        /* document.querySelector('.toggl-button').style.color = '';
-        document.querySelector('.toggl-button').classList.remove('active');
-        document.querySelector('.toggl-button').innerHTML  = 'Start timer';*/
+        if(TogglButton.$clientMap[timeEntry.clientName]) {
+            TogglButton.createProject(timeEntry.clientName, timeEntry.projectName);
+            alert('I created project \'' + timeEntry.projectName +'\', try again');
+            return;
+        }
+        
+        alert('Error: Could not find Client in Toggl: ' + timeEntry.clientName);
         return;
     }
-    
-    //alert('new project ID: ' + clientProjectId);
-    
+
     var start = new Date(),
       xhr = new XMLHttpRequest(),
       entry = {
@@ -140,15 +155,13 @@ var TogglButton = {
           start: start.toISOString(),
           description: timeEntry.description,
           wid: TogglButton.$user.default_wid,
-          pid: timeEntry.projectId || null,
+          pid: clientProjectId || null,
           billable: timeEntry.billable || false,
           duration: -(start.getTime() / 1000),
-          created_with: timeEntry.createdWith || 'TogglButton'
+          created_with: timeEntry.createdWith || 'Nexus TogglButton'
         }
-      };
-    if (timeEntry.projectName !== undefined) {
-      entry.time_entry.pid = TogglButton.$user.projectMap[timeEntry.projectName];
-    }
+      }; 
+
     xhr.open("POST", TogglButton.$newApiUrl + "/time_entries", true);
     xhr.setRequestHeader('Authorization', 'Basic ' + btoa(TogglButton.$user.api_token + ':api_token'));
     // handle response
@@ -161,6 +174,30 @@ var TogglButton = {
     xhr.send(JSON.stringify(entry));
   },
 
+  createProject: function (clientName, projectName) {
+
+    var xhr = new XMLHttpRequest(), 
+      entry = {
+        project: {
+          name: projectName,
+          wid: TogglButton.$user.default_wid,
+          cid: TogglButton.$clientMap[clientName],
+          active: true,
+          is_private: false          
+        }
+      }; 
+      
+    xhr.open("POST", TogglButton.$newApiUrl + "/projects", true);
+    xhr.setRequestHeader('Authorization', 'Basic ' + btoa(TogglButton.$user.api_token + ':api_token'));
+    // handle response
+    xhr.addEventListener('load', function (e) {
+        //RELOAD DATA
+        TogglButton.$dataRefresh = true;
+        TogglButton.fetchClients(TogglButton.$apiUrl);
+    });
+    xhr.send(JSON.stringify(entry));
+  },
+  
   stopTimeEntry: function (entryId) {
     entryId = entryId || TogglButton.$curEntryId;
     if (!entryId) {
